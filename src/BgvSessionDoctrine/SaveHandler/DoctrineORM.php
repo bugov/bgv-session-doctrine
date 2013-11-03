@@ -94,18 +94,19 @@ class DoctrineORM implements SaveHandlerInterface
         try {
             $session = $this->em->getRepository($this->entityName)
                 ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
+
+            if (!is_null($session)) {
+                if ($session->getModified() + $session->getLifetime() > time()) {
+                    return $session->getData();
+                }
+                $this->destroy($id);
+            }
         } catch (\Exception $e) {
             $logger = new \Zend\Log\Logger;
             $logger->addWriter('stream', null, ['stream' => 'php://output']);
             $logger->log(\Zend\Log\Logger::WARN, "Can't init session:\n" . $e->getMessage());
         }
 
-        if (!is_null($session)) {
-            if ($session->getModified() + $session->getLifetime() > time()) {
-                return $session->getData();
-            }
-            $this->destroy($id);
-        }
         return '';
     }
 
@@ -117,21 +118,27 @@ class DoctrineORM implements SaveHandlerInterface
      */
     public function write($id, $data)
     {
-        $session = $this->em->getRepository($this->entityName)
-            ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
+        try {
+            $session = $this->em->getRepository($this->entityName)
+                ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
 
-        if (is_null($session)) {
-            $session = new $this->entityName;
-            $session->setId($id);
-            $session->setName($this->sessionName);
+            if (is_null($session)) {
+                $session = new $this->entityName;
+                $session->setId($id);
+                $session->setName($this->sessionName);
+            }
+
+            $session->setModified(time());
+            $session->setData((string)$data);
+            $session->setLifetime($this->lifetime);
+
+            $this->em->persist($session);
+            $this->em->flush();
+        } catch (\Exception $e) {
+            $logger = new \Zend\Log\Logger;
+            $logger->addWriter('stream', null, ['stream' => 'php://output']);
+            $logger->log(\Zend\Log\Logger::WARN, "Can't init session:\n" . $e->getMessage());
         }
-
-        $session->setModified(time());
-        $session->setData((string)$data);
-        $session->setLifetime($this->lifetime);
-
-        $this->em->persist($session);
-        $this->em->flush();
 
         return true;
     }
@@ -143,13 +150,20 @@ class DoctrineORM implements SaveHandlerInterface
      */
     public function destroy($id)
     {
-        $session = $this->em->getRepository($this->entityName)
-            ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
+        try {
+            $session = $this->em->getRepository($this->entityName)
+                ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
 
-        if (!is_null($session)) {
-            $this->em->remove($session);
-            $this->em->flush();
+            if (!is_null($session)) {
+                $this->em->remove($session);
+                $this->em->flush();
+            }
+        } catch (\Exception $e) {
+            $logger = new \Zend\Log\Logger;
+            $logger->addWriter('stream', null, ['stream' => 'php://output']);
+            $logger->log(\Zend\Log\Logger::WARN, "Can't init session:\n" . $e->getMessage());
         }
+
         return true;
     }
 
