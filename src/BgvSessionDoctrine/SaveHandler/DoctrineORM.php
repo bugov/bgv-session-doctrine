@@ -70,8 +70,8 @@ class DoctrineORM implements SaveHandlerInterface
     public function open($savePath, $name)
     {
         $this->sessionSavePath = $savePath;
-        $this->sessionName = $name;
-        $this->lifetime = ini_get('session.gc_maxlifetime');
+        $this->sessionName     = $name;
+        $this->lifetime        = ini_get('session.gc_maxlifetime');
         return true;
     }
 
@@ -91,8 +91,14 @@ class DoctrineORM implements SaveHandlerInterface
      */
     public function read($id)
     {
-        $session = $this->em->getRepository($this->entityName)
-            ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
+        try {
+            $session = $this->em->getRepository($this->entityName)
+                ->findOneBy(array('id' => $id, 'name' => $this->sessionName));
+        } catch (\Exception $e) {
+            $logger = new \Zend\Log\Logger;
+            $logger->addWriter('stream', null, ['stream' => 'php://output']);
+            $logger->log(\Zend\Log\Logger::WARN, "Can't init session:\n" . $e->getMessage());
+        }
 
         if (!is_null($session)) {
             if ($session->getModified() + $session->getLifetime() > time()) {
